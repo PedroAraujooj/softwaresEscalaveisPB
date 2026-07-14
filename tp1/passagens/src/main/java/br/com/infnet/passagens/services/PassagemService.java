@@ -1,12 +1,17 @@
 package br.com.infnet.passagens.services;
 
 import br.com.infnet.passagens.dtos.PassagemRequestDTO;
+import br.com.infnet.passagens.dtos.PassagemHistoricoResponseDTO;
 import br.com.infnet.passagens.dtos.PassagemResponseDTO;
+import br.com.infnet.passagens.models.OperacaoHistorico;
 import br.com.infnet.passagens.models.Passagem;
+import br.com.infnet.passagens.models.PassagemHistorico;
+import br.com.infnet.passagens.repositories.PassagemHistoricoRepository;
 import br.com.infnet.passagens.repositories.PassagemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -16,7 +21,9 @@ import java.util.List;
 public class PassagemService {
 
     private final PassagemRepository passagemRepository;
+    private final PassagemHistoricoRepository passagemHistoricoRepository;
 
+    @Transactional(readOnly = true)
     public List<PassagemResponseDTO> listarTodas() {
         return passagemRepository.findAll()
                 .stream()
@@ -24,25 +31,35 @@ public class PassagemService {
                 .toList();
     }
 
+    @Transactional
     public PassagemResponseDTO criar(PassagemRequestDTO requestDTO) {
-        verificarAssentoExistente(requestDTO.getAssento());
+        verificarAssentoDisponivelParaViagem(requestDTO);
 
         Passagem passagem = converterParaEntidade(requestDTO);
         Passagem passagemSalva = passagemRepository.save(passagem);
+        registrarHistorico(passagemSalva, OperacaoHistorico.CRIACAO);
 
         return converterParaResponseDTO(passagemSalva);
     }
 
+    @Transactional(readOnly = true)
     public PassagemResponseDTO buscarPorId(Long id) {
         Passagem passagem = encontrarPassagemPorId(id);
         return converterParaResponseDTO(passagem);
     }
 
+    @Transactional
     public PassagemResponseDTO atualizar(Long id, PassagemRequestDTO requestDTO) {
         Passagem passagem = encontrarPassagemPorId(id);
 
         boolean assentoJaUsadoPorOutraPassagem =
-                passagemRepository.existsByAssentoAndIdNot(requestDTO.getAssento(), id);
+                passagemRepository.existsByAssentoAndOrigemIgnoreCaseAndDestinoIgnoreCaseAndDataAndIdNot(
+                        requestDTO.getAssento(),
+                        requestDTO.getOrigem(),
+                        requestDTO.getDestino(),
+                        requestDTO.getData(),
+                        id
+                );
 
         if (assentoJaUsadoPorOutraPassagem) {
             throw new ResponseStatusException(
@@ -59,19 +76,31 @@ public class PassagemService {
         passagem.setStatus(requestDTO.getStatus());
 
         Passagem passagemAtualizada = passagemRepository.save(passagem);
+        registrarHistorico(passagemAtualizada, OperacaoHistorico.ATUALIZACAO);
 
         return converterParaResponseDTO(passagemAtualizada);
     }
 
+    @Transactional
     public void deletar(Long id) {
         Passagem passagem = encontrarPassagemPorId(id);
+        registrarHistorico(passagem, OperacaoHistorico.REMOCAO);
         passagemRepository.delete(passagem);
     }
 
+    @Transactional(readOnly = true)
     public List<PassagemResponseDTO> buscarPorDestino(String destino) {
         return passagemRepository.findByDestinoIgnoreCase(destino)
                 .stream()
                 .map(this::converterParaResponseDTO)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PassagemHistoricoResponseDTO> listarHistorico(Long passagemId) {
+        return passagemHistoricoRepository.findByPassagemIdOrderByRegistradoEmAscIdAsc(passagemId)
+                .stream()
+                .map(PassagemHistoricoResponseDTO::de)
                 .toList();
     }
 
@@ -83,8 +112,13 @@ public class PassagemService {
                 ));
     }
 
-    private void verificarAssentoExistente(Integer assento) {
-        boolean existe = passagemRepository.existsByAssento(assento);
+    private void verificarAssentoDisponivelParaViagem(PassagemRequestDTO requestDTO) {
+        boolean existe = passagemRepository.existsByAssentoAndOrigemIgnoreCaseAndDestinoIgnoreCaseAndData(
+                requestDTO.getAssento(),
+                requestDTO.getOrigem(),
+                requestDTO.getDestino(),
+                requestDTO.getData()
+        );
 
         if (existe) {
             throw new ResponseStatusException(
@@ -92,6 +126,10 @@ public class PassagemService {
                     "Assento já está reservado."
             );
         }
+    }
+
+    private void registrarHistorico(Passagem passagem, OperacaoHistorico operacao) {
+        passagemHistoricoRepository.save(PassagemHistorico.registrar(passagem, operacao));
     }
 
     private Passagem converterParaEntidade(PassagemRequestDTO requestDTO) {

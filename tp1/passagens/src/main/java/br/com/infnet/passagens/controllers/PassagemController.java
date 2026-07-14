@@ -1,5 +1,6 @@
 package br.com.infnet.passagens.controllers;
 
+import br.com.infnet.passagens.dtos.PassagemHistoricoResponseDTO;
 import br.com.infnet.passagens.dtos.PassagemRequestDTO;
 import br.com.infnet.passagens.dtos.PassagemResponseDTO;
 import br.com.infnet.passagens.services.PassagemService;
@@ -49,5 +50,10 @@ public class PassagemController {
     @GetMapping("/busca")
     public List<PassagemResponseDTO> buscarPorDestino(@RequestParam String destino) {
         return passagemService.buscarPorDestino(destino);
+    }
+
+    @GetMapping("/{id}/historico")
+    public List<PassagemHistoricoResponseDTO> listarHistorico(@PathVariable Long id) {
+        return passagemService.listarHistorico(id);
     }
 }
