@@ -1,0 +1,168 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f2f2f2;
+  color: #222;
+}
+
+.container {
+  width: min(1100px, 95%);
+  margin: 30px auto;
+}
+
+h1 {
+  text-align: center;
+}
+
+.modulo {
+  margin-top: 28px;
+}
+
+.modulo-cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #d8d8d8;
+  margin-bottom: 14px;
+}
+
+.modulo-cabecalho h2 {
+  margin: 0;
+}
+
+.modulo-cabecalho span {
+  color: #555;
+  font-size: 14px;
+}
+
+.grade-cards {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card h3 {
+  margin-top: 0;
+}
+
+.tabela-card {
+  overflow-x: auto;
+}
+
+.formulario,
+.busca {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+input {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  min-width: 180px;
+  flex: 1;
+}
+
+select {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  min-width: 220px;
+  flex: 1;
+  background: white;
+}
+
+button {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #0b7cff;
+  color: white;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+.secundario {
+  background: #777;
+}
+
+.perigo {
+  background: #d93025;
+}
+
+.botoes {
+  width: 100%;
+}
+
+.avisos {
+  margin: 14px 0;
+}
+
+.mensagem {
+  color: #0a7a2f;
+  font-weight: bold;
+}
+
+.erro {
+  color: #b00020;
+  font-weight: bold;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+}
+
+th {
+  background: #f7f7f7;
+}
+
+@media (max-width: 700px) {
+  .grade-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .modulo-cabecalho {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  th,
+  td {
+    padding: 6px;
+  }
+
+  button {
+    margin-bottom: 4px;
+  }
+}
