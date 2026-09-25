@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Dados e evidencias locais
+**/data/
+*.log
+**/node_modules/

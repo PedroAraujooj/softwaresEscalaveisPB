@@ -1,5 +1,7 @@
 # Documentacao dos Microsservicos
 
+> Documento histórico da etapa anterior, com comunicação HTTP/Feign. A implementação atual usa RabbitMQ: consulte [Arquitetura orientada a eventos](../docs/ARQUITETURA_EVENTOS.md) e o [README atual](../README.md).
+
 ## Visao Geral
 
 O sistema foi separado em tres projetos Spring Boot independentes:

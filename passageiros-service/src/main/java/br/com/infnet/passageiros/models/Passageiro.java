@@ -33,6 +33,9 @@ public class Passageiro {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @jakarta.persistence.Version
+    private Long versao;
+
     @Column(nullable = false, length = 120)
     private String nome;
 

@@ -17,6 +17,7 @@ import java.util.List;
 public class PassageiroService {
 
     private final PassageiroRepository passageiroRepository;
+    private final br.com.infnet.eventos.Eventos eventos;
 
     @Transactional(readOnly = true)
     public List<PassageiroResponseDTO> listarTodos() {
@@ -31,7 +32,9 @@ public class PassageiroService {
         validarCpfEmailDisponiveis(requestDTO);
 
         Passageiro passageiro = converterParaEntidade(requestDTO);
-        return PassageiroResponseDTO.de(passageiroRepository.save(passageiro));
+        passageiroRepository.saveAndFlush(passageiro);
+        eventos.registrar("passageiro.criado.v1", passageiro.getId(), passageiro.getVersao(), PassageiroResponseDTO.de(passageiro));
+        return PassageiroResponseDTO.de(passageiro);
     }
 
     @Transactional(readOnly = true)
@@ -56,12 +59,15 @@ public class PassageiroService {
         passageiro.setEmail(requestDTO.getEmail());
         passageiro.setTelefone(requestDTO.getTelefone());
 
-        return PassageiroResponseDTO.de(passageiroRepository.save(passageiro));
+        passageiroRepository.saveAndFlush(passageiro);
+        eventos.registrar("passageiro.atualizado.v1", passageiro.getId(), passageiro.getVersao(), PassageiroResponseDTO.de(passageiro));
+        return PassageiroResponseDTO.de(passageiro);
     }
 
     @Transactional
     public void deletar(Long id) {
         Passageiro passageiro = encontrarPorId(id);
+        eventos.registrar("passageiro.removido.v1", passageiro.getId(), passageiro.getVersao() + 1, PassageiroResponseDTO.de(passageiro));
         passageiroRepository.delete(passageiro);
     }
 

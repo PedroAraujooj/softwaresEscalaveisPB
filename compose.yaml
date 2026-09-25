@@ -1,0 +1,90 @@
+name: pb-eventos
+services:
+  frontend:
+    build:
+      context: ./passagens-frontend
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      - passageiros
+      - passagens
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app-local
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  passageiros-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: passageiros
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app-local
+    volumes:
+      - passageiros-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d passageiros"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  passagens-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: passagens
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app-local
+    volumes:
+      - passagens-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d passagens"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  passageiros:
+    build:
+      context: .
+      args:
+        MODULE: passageiros-service
+    ports:
+      - "127.0.0.1:8082:8082"
+    environment:
+      DB_URL: jdbc:postgresql://passageiros-db:5432/passageiros
+      DB_USER: app
+      DB_PASSWORD: app-local
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      passageiros-db:
+        condition: service_healthy
+  passagens:
+    build:
+      context: .
+      args:
+        MODULE: passagens
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      DB_URL: jdbc:postgresql://passagens-db:5432/passagens
+      DB_USER: app
+      DB_PASSWORD: app-local
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      passagens-db:
+        condition: service_healthy
+volumes:
+  rabbitmq-data:
+  passageiros-data:
+  passagens-data:

@@ -1,6 +1,8 @@
 package br.com.infnet.passagens;
 
-import br.com.infnet.passagens.clients.PassageiroClient;
+import br.com.infnet.eventos.*;
+import br.com.infnet.passagens.eventos.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import br.com.infnet.passagens.dtos.PassageiroResponseDTO;
 import br.com.infnet.passagens.dtos.PassagemHistoricoResponseDTO;
 import br.com.infnet.passagens.dtos.PassagemRequestDTO;
@@ -11,7 +13,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,8 +20,6 @@ import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties = "eureka.client.enabled=false")
 @Transactional
@@ -32,22 +31,25 @@ class PassagemPersistenciaTests {
     @Autowired
     private PassagemRepository passagemRepository;
 
-    @MockBean
-    private PassageiroClient passageiroClient;
+    @Autowired private PassageiroConsumer passageiroConsumer;
+    @Autowired private HistoricoConsumer historicoConsumer;
+    @Autowired private OutboxRepository outbox;
+    @Autowired private ObjectMapper mapper;
 
     @BeforeEach
-    void configurarPassageiroClient() {
-        when(passageiroClient.buscarPorId(anyLong()))
-                .thenAnswer(invocation -> {
-                    Long id = invocation.getArgument(0);
-                    return new PassageiroResponseDTO(
-                            id,
-                            "Passageiro " + id,
-                            "0000000000" + id,
-                            "passageiro" + id + "@email.com",
-                            "2199999000" + id
-                    );
-                });
+    void sincronizarPassageiros() {
+        for (long id = 1; id <= 8; id++) {
+            passageiroConsumer.receber(new Evento(java.util.UUID.randomUUID(), 1, "passageiro.criado.v1",
+                    Long.toString(id), 0, java.time.Instant.now(), mapper.valueToTree(new PassageiroResponseDTO(
+                    id, "Passageiro " + id, "0000000000" + id, "passageiro" + id + "@email.com", "2199999000" + id))));
+        }
+    }
+
+    private void consumirHistorico() {
+        outbox.findAll().forEach(item -> {
+            try { historicoConsumer.receber(mapper.readValue(item.getPayload(), Evento.class)); }
+            catch (Exception e) { throw new RuntimeException(e); }
+        });
     }
 
     @Test
@@ -64,7 +66,10 @@ class PassagemPersistenciaTests {
         var passagem = passagemService.criar(request);
 
         assertThat(passagemRepository.findById(passagem.getId())).isPresent();
+        assertThat(passagemService.listarHistorico(passagem.getId())).isEmpty();
+        assertThat(outbox.countByPublicadoEmIsNull()).isEqualTo(1);
 
+        consumirHistorico();
         var historico = passagemService.listarHistorico(passagem.getId());
         assertThat(historico).hasSize(1);
         assertThat(historico.getFirst().getOperacao()).isEqualTo(OperacaoHistorico.CRIACAO);
@@ -136,6 +141,7 @@ class PassagemPersistenciaTests {
                 "Confirmada"
         ));
 
+        consumirHistorico();
         var historico = passagemService.listarHistorico(passagem.getId());
 
         assertThat(historico)
@@ -160,6 +166,7 @@ class PassagemPersistenciaTests {
 
         assertThat(passagemRepository.findById(passagem.getId())).isEmpty();
 
+        consumirHistorico();
         var historico = passagemService.listarHistorico(passagem.getId());
         assertThat(historico)
                 .extracting(PassagemHistoricoResponseDTO::getOperacao)

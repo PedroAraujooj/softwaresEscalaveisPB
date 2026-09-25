@@ -1,6 +1,5 @@
 package br.com.infnet.passagens.services;
 
-import br.com.infnet.passagens.clients.PassageiroClient;
 import br.com.infnet.passagens.dtos.PassageiroResponseDTO;
 import br.com.infnet.passagens.dtos.PassagemRequestDTO;
 import br.com.infnet.passagens.dtos.PassagemHistoricoResponseDTO;
@@ -10,7 +9,6 @@ import br.com.infnet.passagens.models.Passagem;
 import br.com.infnet.passagens.models.PassagemHistorico;
 import br.com.infnet.passagens.repositories.PassagemHistoricoRepository;
 import br.com.infnet.passagens.repositories.PassagemRepository;
-import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,7 +23,8 @@ public class PassagemService {
 
     private final PassagemRepository passagemRepository;
     private final PassagemHistoricoRepository passagemHistoricoRepository;
-    private final PassageiroClient passageiroClient;
+    private final br.com.infnet.passagens.eventos.PassageiroProjecaoRepository projecaoRepository;
+    private final br.com.infnet.eventos.Eventos eventos;
 
     @Transactional(readOnly = true)
     public List<PassagemResponseDTO> listarTodas() {
@@ -37,7 +36,7 @@ public class PassagemService {
 
     @Transactional
     public PassagemResponseDTO criar(PassagemRequestDTO requestDTO) {
-        PassageiroResponseDTO passageiro = buscarPassageiroPorId(requestDTO.getPassageiroId());
+        PassageiroResponseDTO passageiro = buscarPassageiroAtivo(requestDTO.getPassageiroId());
         verificarAssentoDisponivelParaViagem(requestDTO);
 
         Passagem passagem = converterParaEntidade(requestDTO);
@@ -56,7 +55,7 @@ public class PassagemService {
     @Transactional
     public PassagemResponseDTO atualizar(Long id, PassagemRequestDTO requestDTO) {
         Passagem passagem = encontrarPassagemPorId(id);
-        PassageiroResponseDTO passageiro = buscarPassageiroPorId(requestDTO.getPassageiroId());
+        PassageiroResponseDTO passageiro = buscarPassageiroAtivo(requestDTO.getPassageiroId());
 
         boolean assentoJaUsadoPorOutraPassagem =
                 passagemRepository.existsByAssentoAndOrigemIgnoreCaseAndDestinoIgnoreCaseAndDataAndIdNot(
@@ -136,21 +135,25 @@ public class PassagemService {
     }
 
     private void registrarHistorico(Passagem passagem, OperacaoHistorico operacao, String passageiroNome) {
-        passagemHistoricoRepository.save(PassagemHistorico.registrar(passagem, operacao, passageiroNome));
+        String tipo = switch (operacao) {
+            case CRIACAO -> "passagem.criada.v1";
+            case ATUALIZACAO -> "passagem.atualizada.v1";
+            case REMOCAO -> "passagem.removida.v1";
+        };
+        eventos.registrar(tipo, passagem.getId(), 0, PassagemHistorico.registrar(passagem, operacao, passageiroNome));
+    }
+
+    private PassageiroResponseDTO buscarPassageiroAtivo(Long id) {
+        if (id == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe o passageiro.");
+        var projecao = projecaoRepository.findById(id).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.CONFLICT, "Passageiro ainda nao sincronizado. Aguarde alguns instantes e tente novamente."));
+        if (projecao.isRemovido()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Passageiro removido.");
+        return projecao.toDTO();
     }
 
     private PassageiroResponseDTO buscarPassageiroPorId(Long id) {
-        try {
-            return passageiroClient.buscarPorId(id);
-        } catch (FeignException.NotFound exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Passageiro nao encontrado.", exception);
-        } catch (FeignException exception) {
-            throw new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "Nao foi possivel consultar o microsservico de passageiros.",
-                    exception
-            );
-        }
+        return projecaoRepository.findById(id).map(br.com.infnet.passagens.eventos.PassageiroProjecao::toDTO)
+                .orElseGet(() -> new PassageiroResponseDTO(id, "Aguardando sincronizacao", null, null, null));
     }
 
     private Passagem converterParaEntidade(PassagemRequestDTO requestDTO) {

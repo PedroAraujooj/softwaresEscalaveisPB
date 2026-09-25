@@ -106,7 +106,8 @@ function App() {
       });
 
       if (!resposta.ok) {
-        throw new Error('Erro ao salvar passagem');
+        const problema = await resposta.json().catch(() => ({}));
+        throw new Error(problema.message || 'Erro ao salvar passagem');
       }
 
       setFormPassagem(formPassagemInicial);
@@ -306,6 +307,7 @@ function App() {
   return (
     <main className="container">
       <h1>Sistema de Passagens</h1>
+      <p>Cadastros e alterações de participantes podem levar alguns instantes para aparecer nas passagens. Use “Listar todas” para atualizar.</p>
 
       {(mensagem || erro) && (
         <div className="avisos">

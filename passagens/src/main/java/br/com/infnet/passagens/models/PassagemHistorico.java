@@ -33,6 +33,9 @@ public class PassagemHistorico {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true)
+    private String eventId;
+
     @Column(name = "passagem_id", nullable = false)
     private Long passagemId;
 

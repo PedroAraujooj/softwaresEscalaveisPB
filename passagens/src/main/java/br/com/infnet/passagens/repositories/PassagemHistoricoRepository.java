@@ -7,5 +7,7 @@ import java.util.List;
 
 public interface PassagemHistoricoRepository extends JpaRepository<PassagemHistorico, Long> {
 
+    boolean existsByEventId(String eventId);
+
     List<PassagemHistorico> findByPassagemIdOrderByRegistradoEmAscIdAsc(Long passagemId);
 }
