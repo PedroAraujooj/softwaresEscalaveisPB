@@ -1,0 +1,280 @@
+apiVersion: "v1"
+kind: "PersistentVolumeClaim"
+metadata:
+  name: "passageiros-db"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "passageiros-db"
+spec:
+  selector:
+    app: "passageiros-db"
+  ports:
+    -
+      name: "http"
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "passageiros-db"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "passageiros-db"
+  template:
+    metadata:
+      labels:
+        app: "passageiros-db"
+    spec:
+      containers:
+        -
+          name: "postgres"
+          image: "postgres:17-alpine"
+          ports:
+            -
+              containerPort: 5432
+          env:
+            -
+              name: "POSTGRES_DB"
+              value: "passageiros"
+            -
+              name: "POSTGRES_USER"
+              value: "app"
+            -
+              name: "POSTGRES_PASSWORD"
+              valueFrom:
+                secretKeyRef:
+                  name: "app-secrets"
+                  key: "DB_PASSWORD"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          volumeMounts:
+            -
+              name: "data"
+              mountPath: "/var/lib/postgresql/data"
+          readinessProbe:
+            exec:
+              command:
+                - "pg_isready"
+                - "-U"
+                - "app"
+                - "-d"
+                - "passageiros"
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+      volumes:
+        -
+          name: "data"
+          persistentVolumeClaim:
+            claimName: "passageiros-db"
+  strategy:
+    type: "Recreate"
+---
+apiVersion: "v1"
+kind: "PersistentVolumeClaim"
+metadata:
+  name: "passagens-db"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "passagens-db"
+spec:
+  selector:
+    app: "passagens-db"
+  ports:
+    -
+      name: "http"
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "passagens-db"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "passagens-db"
+  template:
+    metadata:
+      labels:
+        app: "passagens-db"
+    spec:
+      containers:
+        -
+          name: "postgres"
+          image: "postgres:17-alpine"
+          ports:
+            -
+              containerPort: 5432
+          env:
+            -
+              name: "POSTGRES_DB"
+              value: "passagens"
+            -
+              name: "POSTGRES_USER"
+              value: "app"
+            -
+              name: "POSTGRES_PASSWORD"
+              valueFrom:
+                secretKeyRef:
+                  name: "app-secrets"
+                  key: "DB_PASSWORD"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          volumeMounts:
+            -
+              name: "data"
+              mountPath: "/var/lib/postgresql/data"
+          readinessProbe:
+            exec:
+              command:
+                - "pg_isready"
+                - "-U"
+                - "app"
+                - "-d"
+                - "passagens"
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+      volumes:
+        -
+          name: "data"
+          persistentVolumeClaim:
+            claimName: "passagens-db"
+  strategy:
+    type: "Recreate"
+---
+apiVersion: "v1"
+kind: "PersistentVolumeClaim"
+metadata:
+  name: "rabbitmq"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "rabbitmq"
+spec:
+  selector:
+    app: "rabbitmq"
+  ports:
+    -
+      name: "http"
+      port: 5672
+      targetPort: 5672
+    -
+      name: "management"
+      port: 15672
+      targetPort: 15672
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "rabbitmq"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "rabbitmq"
+  template:
+    metadata:
+      labels:
+        app: "rabbitmq"
+    spec:
+      containers:
+        -
+          name: "rabbitmq"
+          image: "rabbitmq:4.1-management"
+          env:
+            -
+              name: "RABBITMQ_DEFAULT_USER"
+              value: "app"
+            -
+              name: "RABBITMQ_DEFAULT_PASS"
+              valueFrom:
+                secretKeyRef:
+                  name: "app-secrets"
+                  key: "RABBITMQ_PASSWORD"
+            -
+              name: "RABBITMQ_NODENAME"
+              value: "rabbit@rabbitmq"
+          ports:
+            -
+              containerPort: 5672
+            -
+              containerPort: 15672
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "768Mi"
+          volumeMounts:
+            -
+              name: "data"
+              mountPath: "/var/lib/rabbitmq"
+          readinessProbe:
+            exec:
+              command:
+                - "rabbitmq-diagnostics"
+                - "-q"
+                - "ping"
+            periodSeconds: 10
+            timeoutSeconds: 5
+          startupProbe:
+            tcpSocket:
+              port: 5672
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            tcpSocket:
+              port: 5672
+            periodSeconds: 15
+      volumes:
+        -
+          name: "data"
+          persistentVolumeClaim:
+            claimName: "rabbitmq"
+      hostname: "rabbitmq"
+  strategy:
+    type: "Recreate"

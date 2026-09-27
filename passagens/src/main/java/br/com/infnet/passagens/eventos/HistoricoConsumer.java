@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
+@lombok.extern.slf4j.Slf4j
 @Service @RequiredArgsConstructor
 public class HistoricoConsumer {
     private final PassagemHistoricoRepository repository;
@@ -19,6 +20,7 @@ public class HistoricoConsumer {
     @RabbitListener(queues = MessagingConfig.HISTORICO)
     @Transactional
     public void receber(Evento evento) {
+        log.info("Evento recebido eventId={} tipo={}", evento.eventId(), evento.eventType());
         evento.validar("passagem.");
         OperacaoHistorico operacao = switch (evento.eventType()) {
             case "passagem.criada.v1" -> OperacaoHistorico.CRIACAO;

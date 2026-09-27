@@ -1,0 +1,41 @@
+apiVersion: "autoscaling/v2"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "passageiros"
+spec:
+  scaleTargetRef:
+    apiVersion: "apps/v1"
+    kind: "Deployment"
+    name: "passageiros"
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    -
+      type: "ContainerResource"
+      containerResource:
+        name: "cpu"
+        container: "api"
+        target:
+          type: "Utilization"
+          averageUtilization: 70
+---
+apiVersion: "autoscaling/v2"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "passagens"
+spec:
+  scaleTargetRef:
+    apiVersion: "apps/v1"
+    kind: "Deployment"
+    name: "passagens"
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    -
+      type: "ContainerResource"
+      containerResource:
+        name: "cpu"
+        container: "api"
+        target:
+          type: "Utilization"
+          averageUtilization: 70

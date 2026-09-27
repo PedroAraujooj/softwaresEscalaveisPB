@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.Set;
 
+@lombok.extern.slf4j.Slf4j
 @Service @RequiredArgsConstructor
 public class PassageiroConsumer {
     private final PassageiroProjecaoRepository repository;
@@ -17,6 +18,7 @@ public class PassageiroConsumer {
     @RabbitListener(queues = MessagingConfig.PROJECAO)
     @Transactional
     public void receber(Evento evento) {
+        log.info("Evento recebido eventId={} tipo={}", evento.eventId(), evento.eventType());
         evento.validar("passageiro.");
         if (!Set.of("passageiro.criado.v1", "passageiro.atualizado.v1", "passageiro.removido.v1").contains(evento.eventType())) {
             throw new IllegalArgumentException("Tipo de evento desconhecido");

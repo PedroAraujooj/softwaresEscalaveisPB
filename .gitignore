@@ -36,3 +36,11 @@ build/
 **/data/
 *.log
 **/node_modules/
+
+.env
+k8s/secret.yaml
+artifacts/
+**/dist/
+
+.deploy/
+**/__pycache__/

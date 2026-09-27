@@ -20,13 +20,15 @@ public class OutboxPublisher {
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
     private final OutboxRepository repository;
     private final RabbitTemplate rabbit;
+    private final RastreamentoEventos rastreamento;
 
     @Scheduled(fixedDelayString = "${eventos.publisher.delay-ms:1000}")
     @Transactional
     public void publicar() {
         for (var item : repository.findTop20ByPublicadoEmIsNullOrderByIdAsc()) {
             item.setTentativas(item.getTentativas() + 1);
-            try {
+            var span = rastreamento.iniciar(item);
+            try (var scope = rastreamento.ativar(span)) {
                 var message = MessageBuilder.withBody(item.getPayload().getBytes(StandardCharsets.UTF_8))
                         .setContentType(MessageProperties.CONTENT_TYPE_JSON)
                         .setMessageId(item.getEventId()).setDeliveryMode(MessageDeliveryMode.PERSISTENT).build();
@@ -39,10 +41,13 @@ public class OutboxPublisher {
                 item.setPublicadoEm(Instant.now());
                 log.info("Evento publicado eventId={} tipo={}", item.getEventId(), item.getRoutingKey());
             } catch (Exception e) {
+                span.error(e);
                 if (e instanceof InterruptedException) Thread.currentThread().interrupt();
                 log.warn("Outbox pendente eventId={} tentativa={} motivo={}", item.getEventId(), item.getTentativas(), e.toString());
                 // Preserva a ordem; o proximo ciclo tentara novamente com o mesmo eventId.
                 break;
+            } finally {
+                span.end();
             }
         }
     }

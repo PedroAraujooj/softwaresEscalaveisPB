@@ -1,6 +1,7 @@
 name: pb-eventos
 services:
   frontend:
+    image: pb-frontend:local
     build:
       context: ./passagens-frontend
     ports:
@@ -51,6 +52,7 @@ services:
       timeout: 5s
       retries: 20
   passageiros:
+    image: pb-passageiros:local
     build:
       context: .
       args:
@@ -58,6 +60,8 @@ services:
     ports:
       - "127.0.0.1:8082:8082"
     environment:
+      LOGGING_FILE_NAME: /logs/passageiros.log
+      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
       DB_URL: jdbc:postgresql://passageiros-db:5432/passageiros
       DB_USER: app
       DB_PASSWORD: app-local
@@ -67,7 +71,18 @@ services:
         condition: service_healthy
       passageiros-db:
         condition: service_healthy
+    volumes:
+      - passageiros-logs:/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 12
+    mem_limit: 768m
+    restart: unless-stopped
   passagens:
+    image: pb-passagens:local
     build:
       context: .
       args:
@@ -75,6 +90,8 @@ services:
     ports:
       - "127.0.0.1:8081:8081"
     environment:
+      LOGGING_FILE_NAME: /logs/passagens.log
+      ZIPKIN_URL: http://zipkin:9411/api/v2/spans
       DB_URL: jdbc:postgresql://passagens-db:5432/passagens
       DB_USER: app
       DB_PASSWORD: app-local
@@ -84,7 +101,51 @@ services:
         condition: service_healthy
       passagens-db:
         condition: service_healthy
+    volumes:
+      - passagens-logs:/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 12
+    mem_limit: 768m
+    restart: unless-stopped
+  zipkin:
+    image: openzipkin/zipkin:3.5
+    ports: ["127.0.0.1:9411:9411"]
+  loki:
+    image: grafana/loki:3.5.0
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports: ["127.0.0.1:3100:3100"]
+  fluent-bit:
+    image: fluent/fluent-bit:4.0.0
+    volumes:
+      - ./monitoring/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - passageiros-logs:/logs/passageiros:ro
+      - passagens-logs:/logs/passagens:ro
+      - fluent-bit-data:/state
+    depends_on: [loki]
+  grafana:
+    image: grafana/grafana:12.0.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin-local}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["127.0.0.1:3000:3000"]
 volumes:
+  passageiros-logs:
+  passagens-logs:
+  loki-data:
+  fluent-bit-data:
+  grafana-data:
   rabbitmq-data:
   passageiros-data:
   passagens-data:

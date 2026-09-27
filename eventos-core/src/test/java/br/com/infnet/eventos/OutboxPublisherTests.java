@@ -13,12 +13,14 @@ import static org.mockito.ArgumentMatchers.*;
 class OutboxPublisherTests {
     private final OutboxRepository repository = mock(OutboxRepository.class);
     private final RabbitTemplate rabbit = mock(RabbitTemplate.class);
-    private final OutboxPublisher publisher = new OutboxPublisher(repository, rabbit);
+    private final RastreamentoEventos rastreamento = mock(RastreamentoEventos.class);
+    private final OutboxPublisher publisher = new OutboxPublisher(repository, rabbit, rastreamento);
 
     private Outbox item() {
         var item = new Outbox();
         item.setEventId("evento-123"); item.setRoutingKey("passagem.criada.v1"); item.setPayload("{}");
         when(repository.findTop20ByPublicadoEmIsNullOrderByIdAsc()).thenReturn(List.of(item));
+        when(rastreamento.iniciar(item)).thenReturn(mock(io.micrometer.tracing.Span.class));
         return item;
     }
 

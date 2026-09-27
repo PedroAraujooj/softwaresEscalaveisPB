@@ -12,6 +12,7 @@ import java.util.UUID;
 public class Eventos {
     private final OutboxRepository repository;
     private final ObjectMapper mapper;
+    private final RastreamentoEventos rastreamento;
 
     // Impede publicar fora da transacao que alterou o agregado.
     @Transactional(propagation = Propagation.MANDATORY)
@@ -21,6 +22,7 @@ public class Eventos {
         var outbox = new Outbox();
         outbox.setEventId(evento.eventId().toString());
         outbox.setRoutingKey(tipo);
+        outbox.setTraceContext(rastreamento.capturar());
         try {
             outbox.setPayload(mapper.writeValueAsString(evento));
         } catch (JsonProcessingException e) {

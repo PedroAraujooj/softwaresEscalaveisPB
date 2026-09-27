@@ -17,6 +17,9 @@ public class Outbox {
     private String routingKey;
     @Column(nullable = false, columnDefinition = "text")
     private String payload;
+    // Contexto salvo junto com o evento para continuar o trace no publisher agendado.
+    @Column(columnDefinition = "text")
+    private String traceContext;
     private Instant publicadoEm;
     private int tentativas;
 }

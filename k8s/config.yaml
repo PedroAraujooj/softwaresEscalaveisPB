@@ -1,0 +1,11 @@
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  name: "app-config"
+data:
+  DB_USER: "app"
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: "app"
+  ZIPKIN_URL: "http://zipkin:9411/api/v2/spans"
+  TRACING_PROBABILITY: "1.0"

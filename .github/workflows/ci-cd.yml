@@ -1,0 +1,148 @@
+name: CI e CD
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mvn -B -ntp verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testes-java
+          path: '**/target/surefire-reports/'
+  integracao:
+    needs: testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar manifests Kubernetes
+        run: |
+          kubectl kustomize k8s > /tmp/k8s.yaml
+          docker run --rm -v /tmp/k8s.yaml:/manifests.yaml:ro ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary /manifests.yaml
+          docker run --rm -v "$PWD/k8s/hpa.yaml:/hpa.yaml:ro" ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary /hpa.yaml
+      - name: Subir ambiente completo
+        run: docker compose up -d --build --wait --wait-timeout 300
+      - name: Testar APIs e eventos reais com Postman
+        run: |
+          mkdir -p artifacts
+          npx --yes newman@6.2.1 run postman/prova.postman_collection.json --bail --reporters cli,junit --reporter-junit-export artifacts/postman.xml
+      - name: Guardar logs
+        if: always()
+        run: |
+          mkdir -p artifacts
+          docker compose logs --no-color > artifacts/compose.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidencias-integracao
+          path: artifacts/
+      - name: Encerrar ambiente do runner
+        if: always()
+        run: docker compose down
+  publicar:
+    needs: integracao
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Nome do pacote
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: MODULE=passageiros-service
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-passageiros:${{ github.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: MODULE=passagens
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-passagens:${{ github.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: passagens-frontend
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+  implantar:
+    needs: publicar
+    if: vars.ENABLE_K8S_DEPLOY == 'true'
+    runs-on: [self-hosted, linux, x64]
+    environment: simulacao
+    env:
+      KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+      GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
+      GHCR_USER: ${{ secrets.GHCR_USER }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Implantar a versao testada
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KUBE_CONFIG:?}" "${DB_PASSWORD:?}" "${RABBITMQ_PASSWORD:?}" "${GRAFANA_PASSWORD:?}" "${GHCR_USER:?}" "${GHCR_TOKEN:?}"
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig-${GITHUB_RUN_ID}"
+          trap 'rm -f "$KUBECONFIG"' EXIT
+          printf '%s' "$KUBE_CONFIG" | base64 --decode > "$KUBECONFIG"
+          chmod 600 "$KUBECONFIG"
+          kubectl apply -f k8s/namespace.yaml
+          kubectl -n passagens-prova create secret generic app-secrets --from-literal=DB_PASSWORD="$DB_PASSWORD" --from-literal=RABBITMQ_PASSWORD="$RABBITMQ_PASSWORD" --from-literal=GRAFANA_PASSWORD="$GRAFANA_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n passagens-prova create secret docker-registry ghcr --docker-server=ghcr.io --docker-username="$GHCR_USER" --docker-password="$GHCR_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+          # Overlay temporario: nunca aplica as imagens :local no cluster de CD.
+          mkdir -p .deploy
+          cat > .deploy/kustomization.yaml <<EOF
+          resources:
+            - ../k8s
+          images:
+            - name: pb-passageiros
+              newName: ghcr.io/${GITHUB_REPOSITORY,,}-passageiros
+              newTag: ${GITHUB_SHA}
+            - name: pb-passagens
+              newName: ghcr.io/${GITHUB_REPOSITORY,,}-passagens
+              newTag: ${GITHUB_SHA}
+            - name: pb-frontend
+              newName: ghcr.io/${GITHUB_REPOSITORY,,}-frontend
+              newTag: ${GITHUB_SHA}
+          patches:
+            - target:
+                kind: Deployment
+              patch: |-
+                - op: add
+                  path: /spec/template/spec/imagePullSecrets
+                  value:
+                    - name: ghcr
+          EOF
+          kubectl apply -k .deploy
+          for app in passageiros passagens frontend; do
+            kubectl -n passagens-prova rollout status deployment/$app --timeout=300s
+          done

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 
+@lombok.extern.slf4j.Slf4j
 @Service @RequiredArgsConstructor
 public class NotificacaoConsumer {
     private final NotificacaoRepository repository;
@@ -14,6 +15,7 @@ public class NotificacaoConsumer {
     @RabbitListener(queues = MessagingConfig.NOTIFICACOES)
     @Transactional
     public void receber(Evento evento) {
+        log.info("Evento recebido eventId={} tipo={}", evento.eventId(), evento.eventType());
         evento.validar("passagem.");
         if (!"passagem.criada.v1".equals(evento.eventType()) || !evento.data().hasNonNull("passagemId")
                 || !evento.aggregateId().equals(evento.data().get("passagemId").asText())) {
