@@ -1,63 +1,69 @@
-# Sistema de passagens — operação dos microsserviços
+# Sistema de passagens
 
-Projeto da etapa de Software Escaláveis: Spring Boot 3.5, Java 21, Spring AMQP e RabbitMQ. O serviço de passagens usa uma projeção local de passageiros; histórico e notificações simuladas são processados por eventos. Não há mais chamada Feign entre os serviços.
+Este projeto é um trabalho da disciplina de Software Escaláveis. Ele permite cadastrar passageiros e gerenciar passagens, usando microsserviços que se comunicam por mensagens.
 
-## Entrega desta etapa
+## O que o sistema faz
 
-- [Documentação simples: implantação, monitoramento, testes e CI/CD](docs/OPERACAO.md)
-- [Passo a passo da demonstração no Postman](docs/DEMONSTRACAO_POSTMAN.md)
-- [Coleção Postman para importar](postman/prova.postman_collection.json)
-- [Environment Postman para Kubernetes local](postman/kubernetes.postman_environment.json)
-- [Resultados da validação local](docs/VALIDACAO.md)
-- Manifests em `k8s/` e configurações de monitoramento em `monitoring/`.
+- Cadastra, consulta, atualiza e exclui passageiros e passagens.
+- Verifica regras como CPF duplicado e assento já reservado na mesma viagem.
+- Guarda o histórico de criação, atualização e exclusão das passagens.
+- Gera notificações simuladas quando uma passagem é criada.
 
-## Executar
+## Como o projeto está organizado
 
-Pré-requisito: Docker Desktop com containers Linux, Docker Compose e portas 5173, 8081, 8082, 5672 e 15672 disponíveis. Se estiver executando `npm run dev`, encerre-o com `Ctrl+C` para liberar a porta 5173.
+O `passageiros-service` cuida dos passageiros e o `passagens` cuida das passagens. Cada serviço tem seu próprio banco PostgreSQL. O frontend foi feito com React e Vite.
+
+A comunicação entre os serviços usa RabbitMQ. Quando um passageiro é cadastrado ou alterado, um evento atualiza seus dados no serviço de passagens. O histórico e as notificações também são processados por eventos, então podem levar alguns instantes para aparecer.
+
+O módulo `eventos-core` reúne o código compartilhado de mensagens e da outbox. A outbox salva o evento no banco antes do envio, permitindo tentar novamente se o RabbitMQ estiver indisponível.
+
+O `eureka-server` foi usado em uma etapa anterior e continua no repositório, mas não participa da execução atual. No Kubernetes, a descoberta dos serviços é feita pelos nomes dos Services.
+
+## Tecnologias e operação
+
+- **Java 21 e Spring Boot:** desenvolvimento das APIs.
+- **PostgreSQL:** armazenamento dos dados. Os testes Java usam H2.
+- **Docker e Docker Compose:** execução do sistema em contêineres.
+- **Kubernetes:** implantação, réplicas e reposição de pods. Os arquivos estão em `k8s/`.
+- **Fluent Bit, Loki e Grafana:** coleta e consulta dos logs.
+- **Micrometer Tracing e Zipkin:** acompanhamento do caminho dos eventos entre os serviços.
+- **Spring Boot Actuator:** verificação da saúde das APIs.
+
+## Como executar
+
+Com o Docker Desktop aberto e usando contêineres Linux, execute na pasta principal:
 
 ```powershell
 docker compose up -d --build --wait --wait-timeout 300
-docker compose logs -f passageiros passagens
 ```
 
-A primeira execução baixa as imagens e compila os projetos. Aguarde os logs `Started PassagensApplication` e `Started PassageirosApplication`. Em volumes novos, o ambiente inicia vazio. A demonstração cria dados próprios e preserva os cadastros que já existiam.
+A primeira execução pode demorar por causa do download das imagens e da compilação.
 
-| Acesso | Endereço |
+| Acesso pelo Docker Compose | Endereço |
 |---|---|
 | Frontend | http://localhost:5173 |
-| Passagens | http://localhost:8081/passagens |
-| Passageiros | http://localhost:8082/passageiros |
-| RabbitMQ Management | http://localhost:15672 — usuário `app`, senha `app-local` |
-| Outbox de cada serviço | http://localhost:8081/eventos/outbox e http://localhost:8082/eventos/outbox |
-| Notificações simuladas | http://localhost:8081/eventos/notificacoes |
+| API de passageiros | http://localhost:8082/passageiros |
+| API de passagens | http://localhost:8081/passagens |
+| Saúde de passageiros | http://localhost:8082/actuator/health/readiness |
+| Saúde de passagens | http://localhost:8081/actuator/health/readiness |
+| RabbitMQ | http://localhost:15672 — `app` / `app-local` |
+| Grafana | http://localhost:3000 — `admin` / `admin-local` |
+| Zipkin | http://localhost:9411 |
 
-O Compose inicia também o frontend, compilado com Vite e servido pelo Nginx. As chamadas `/api/passagens` e `/api/passageiros` são encaminhadas aos serviços pela rede Docker. Não é necessário executar `npm run dev` para usar esse ambiente.
+O histórico é consultado em `GET /passagens/{id}/historico`, usando o ID da passagem. Ele continua disponível depois da exclusão da passagem.
 
-O Compose usa PostgreSQL separado por serviço e volumes persistentes. As credenciais são apenas para desenvolvimento local. Para parar sem apagar os dados: `docker compose down`.
+As senhas acima são do ambiente local de estudo. Para parar os contêineres mantendo os dados, use `docker compose down`.
 
+## Testes e CI/CD
 
-## Testes e desenvolvimento
-
-Com JDK 21 e Maven 3.9+:
-
-```powershell
-mvn test
-mvn install -DskipTests
-docker compose up -d rabbitmq
-# Em terminais separados, sem os containers das APIs usando as mesmas portas:
-mvn -f passageiros-service/pom.xml spring-boot:run
-mvn -f passagens/pom.xml spring-boot:run
-```
-
-Fora do Compose, os bancos H2 ficam em arquivos `data/` no diretório de execução. Os testes usam H2 em memória e consumidores/publisher desligados; os cenários reais de RabbitMQ são exercitados pela coleção Postman e pelo roteiro de demonstração. O Eureka foi preservado para a etapa anterior, mas está desativado por padrão e não participa da comunicação por eventos.
-
-Para desenvolver o frontend fora do Docker, pare apenas seu container (`docker compose stop frontend`) e execute:
+Os testes Java verificam as regras do sistema, a persistência dos dados e o processamento de eventos. Com Maven e JDK 21 instalados, execute:
 
 ```powershell
-cd passagens-frontend
-npm install
-npm run dev
+mvn verify
 ```
 
+A pasta `postman/` contém a coleção para testar as APIs manualmente e o environment do Kubernetes. Nesse environment, as portas são 18082 para passageiros e 18081 para passagens, com os respectivos `port-forward` abertos.
 
-O código de infraestrutura compartilhado está em `eventos-core`; cada serviço continua sendo uma aplicação executável com banco próprio. O módulo compartilhado não contém entidades de domínio dos serviços.
+O GitHub Actions executa os testes Java, valida os arquivos Kubernetes e inicia o ambiente Docker. Depois, faz verificações básicas de saúde e listagem das APIs com `curl` e `jq`. A coleção Postman não roda no CI.
+
+Após um push em `main` ou `master` com os testes aprovados, o workflow publica as imagens no GHCR. A implantação automática no Kubernetes depende da configuração do runner, dos secrets e da variável `ENABLE_K8S_DEPLOY`.
