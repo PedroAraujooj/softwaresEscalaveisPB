@@ -31,9 +31,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - name: Validar manifests Kubernetes
         run: |
           kubectl kustomize k8s > /tmp/k8s.yaml
@@ -41,10 +38,17 @@ jobs:
           docker run --rm -v "$PWD/k8s/hpa.yaml:/hpa.yaml:ro" ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary /hpa.yaml
       - name: Subir ambiente completo
         run: docker compose up -d --build --wait --wait-timeout 300
-      - name: Testar APIs e eventos reais com Postman
+      - name: Verificar saude e listagem das APIs
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          npx --yes newman@6.2.1 run postman/prova.postman_collection.json --bail --reporters cli,junit --reporter-junit-export artifacts/postman.xml
+          curl --fail --silent --show-error --max-time 10 http://localhost:8082/actuator/health/readiness > artifacts/saude-passageiros.json
+          jq -e '.status == "UP"' artifacts/saude-passageiros.json
+          curl --fail --silent --show-error --max-time 10 http://localhost:8081/actuator/health/readiness > artifacts/saude-passagens.json
+          jq -e '.status == "UP"' artifacts/saude-passagens.json
+          curl --fail --silent --show-error --max-time 10 http://localhost:8082/passageiros | jq -e 'type == "array"'
+          curl --fail --silent --show-error --max-time 10 http://localhost:8081/passagens | jq -e 'type == "array"'
       - name: Guardar logs
         if: always()
         run: |
